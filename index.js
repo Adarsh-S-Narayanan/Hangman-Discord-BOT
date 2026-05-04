@@ -35,6 +35,19 @@ for (const file of eventFiles) {
     }
 }
 
+// Dummy web server to keep Render happy
+const express = require('express');
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.get('/', (req, res) => {
+    res.send('Hangman Bot is running!');
+});
+
+app.listen(port, () => {
+    console.log(`Dummy web server listening on port ${port}`);
+});
+
 client.login(process.env.DISCORD_TOKEN);
 
 // Production Error Handling
