@@ -7,7 +7,8 @@ const userSchema = new Schema({
     gamesLost: { type: Number, default: 0 },
     totalLettersGuessed: { type: Number, default: 0 },
     exp: { type: Number, default: 0 },
-    level: { type: Number, default: 1 }
+    level: { type: Number, default: 1 },
+    points: { type: Number, default: 0 }
 });
 
 module.exports = model('User', userSchema);

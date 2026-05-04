@@ -27,6 +27,7 @@ module.exports = {
             .addFields(
                 { name: 'Level', value: `${level}`, inline: true },
                 { name: 'EXP', value: `${exp} / ${nextLevelExp}`, inline: true },
+                { name: 'Points', value: `${userRecord.points || 0}`, inline: true },
                 { name: 'Progress', value: `\`${expBar}\``, inline: false },
                 { name: 'Stats', value: `Wins: ${userRecord.gamesWon} | Losses: ${userRecord.gamesLost}`, inline: false }
             )

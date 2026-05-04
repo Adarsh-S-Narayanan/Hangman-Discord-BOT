@@ -1,4 +1,4 @@
-const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const { activeGames } = require('../utils/gameState');
 const User = require('../models/User');
 
@@ -84,12 +84,16 @@ module.exports = {
 
         const wordDocs = await Word.find({ difficulty: targetDifficulty });
         let word = 'JAVASCRIPT';
+        let clue = 'No specific clue available.';
         if (wordDocs.length > 0) {
-            word = wordDocs[Math.floor(Math.random() * wordDocs.length)].word;
+            const randomDoc = wordDocs[Math.floor(Math.random() * wordDocs.length)];
+            word = randomDoc.word;
+            clue = randomDoc.clue || 'No specific clue available.';
         }
         
         const game = {
             word: word,
+            clue: clue,
             displayWord: Array(word.length).fill('_'),
             guessedLetters: [],
             mistakes: 0,
@@ -106,7 +110,15 @@ module.exports = {
             .setDescription(`\`\`\`\n${hangmanStages[0]}\n\`\`\`\n**WORD:** \`${game.displayWord.join(' ')}\`\n\n**GUESSED:** \`NONE\``)
             .setFooter({ text: 'TYPE A SINGLE LETTER TO GUESS' });
 
-        const message = await interaction.editReply({ embeds: [embed] });
+        game.row = new ActionRowBuilder()
+            .addComponents(
+                new ButtonBuilder()
+                    .setCustomId('reveal_clue')
+                    .setLabel('Reveal Clue (Cost: 10 pts)')
+                    .setStyle(ButtonStyle.Primary)
+            );
+
+        const message = await interaction.editReply({ embeds: [embed], components: [game.row] });
 
         const channel = interaction.client.channels.cache.get(channelId);
         if (!channel) {
@@ -115,6 +127,25 @@ module.exports = {
         const filter = m => m.content.length === 1 && /^[a-zA-Z]$/.test(m.content) && !m.author.bot;
         const collector = channel.createMessageCollector({ filter, time: 300000 });
         game.collector = collector;
+
+        const buttonCollector = message.createMessageComponentCollector({ time: 300000 });
+        game.buttonCollector = buttonCollector;
+
+        buttonCollector.on('collect', async i => {
+            if (i.customId === 'reveal_clue') {
+                let pRecord = await User.findOne({ userId: i.user.id });
+                if (!pRecord) {
+                    pRecord = new User({ userId: i.user.id });
+                    await pRecord.save();
+                }
+                if (pRecord.points < 10) {
+                    return i.reply({ content: `You need 10 points to reveal the clue! You only have ${pRecord.points} points.`, ephemeral: true });
+                }
+                pRecord.points -= 10;
+                await pRecord.save();
+                return i.reply({ content: `**Clue:** ${game.clue}`, ephemeral: true });
+            }
+        });
 
         collector.on('collect', async m => {
             const letter = m.content.toUpperCase();
@@ -162,12 +193,15 @@ module.exports = {
                     .setDescription(`\`\`\`\n${hangmanStages[game.mistakes]}\n\`\`\`\n**WORD:** \`${game.displayWord.join(' ')}\`\n\n**GUESSED:** \`${game.guessedLetters.join(', ')}\``)
                     .setFooter({ text: 'TYPE A SINGLE LETTER TO GUESS' });
 
-                await message.edit({ embeds: [updatedEmbed] });
+                await message.edit({ embeds: [updatedEmbed], components: [game.row] });
             }
         });
 
         collector.on('end', async (collected, reason) => {
             activeGames.delete(channelId);
+            if (game.buttonCollector) {
+                game.buttonCollector.stop();
+            }
 
             const finalEmbed = new EmbedBuilder()
                 .setColor(game.status === 'won' ? '#00FF00' : '#FF0000')
@@ -175,7 +209,7 @@ module.exports = {
                 .setDescription(`\`\`\`\n${hangmanStages[game.mistakes]}\n\`\`\`\n**WORD:** \`${game.word.split('').join(' ')}\`\n\n**GUESSED:** \`${game.guessedLetters.join(', ')}\``)
                 .setFooter({ text: 'GAME OVER' });
 
-            await message.edit({ embeds: [finalEmbed] });
+            await message.edit({ embeds: [finalEmbed], components: [] });
 
             for (const playerId of game.players) {
                 let uRecord = await User.findOne({ userId: playerId });
@@ -197,6 +231,7 @@ module.exports = {
                 if (uRecord.exp >= expNeeded) {
                     uRecord.level += 1;
                     uRecord.exp -= expNeeded;
+                    uRecord.points += 50;
                 } else if (uRecord.exp < 0) {
                     if (uRecord.level > 1) {
                         uRecord.level -= 1;
